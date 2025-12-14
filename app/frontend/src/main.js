@@ -4,7 +4,7 @@ import { setLanguage } from './i18n/index.js'
 import { initUI, changeLanguage } from './modules/ui.js'
 import { loadConfig } from './modules/config.js'
 import { loadStats, switchStatsPeriod, loadStatsByPeriod, getCurrentPeriod } from './modules/stats.js'
-import { renderEndpoints, toggleEndpointPanel } from './modules/endpoints.js'
+import { renderEndpoints, toggleEndpointPanel, switchEndpointViewMode, initEndpointViewMode } from './modules/endpoints.js'
 import { loadLogs, toggleLogPanel, changeLogLevel, copyLogs, clearLogs } from './modules/logs.js'
 import { showDataSyncDialog } from './modules/webdav.js'
 import { initTips } from './modules/tips.js'
@@ -59,6 +59,9 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize UI
     initUI();
+
+    // Initialize endpoint view mode
+    initEndpointViewMode();
 
     // Initialize terminal module
     initTerminal();
@@ -178,6 +181,7 @@ window.minimizeToTray = minimizeToTray;
 window.showDataSyncDialog = showDataSyncDialog;
 window.switchStatsPeriod = switchStatsPeriod;
 window.toggleEndpointPanel = toggleEndpointPanel;
+window.switchEndpointViewMode = switchEndpointViewMode;
 window.showSettingsModal = showSettingsModal;
 window.closeSettingsModal = closeSettingsModal;
 window.saveSettings = saveSettings;

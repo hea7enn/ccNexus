@@ -33,7 +33,12 @@ export default {
         switchFailed: '切换失败',
         reorderFailed: '排序失败',
         collapse: '收起',
-        expand: '展开'
+        expand: '展开',
+        viewDetail: '详情视图',
+        viewCompact: '简洁视图',
+        dragToReorder: '拖拽排序',
+        moreActions: '更多操作',
+        disabled: '已禁用'
     },
     modal: {
         addEndpoint: '添加端点',

@@ -33,7 +33,12 @@ export default {
         switchFailed: 'Switch Failed',
         reorderFailed: 'Reorder Failed',
         collapse: 'Collapse',
-        expand: 'Expand'
+        expand: 'Expand',
+        viewDetail: 'Detail View',
+        viewCompact: 'Compact View',
+        dragToReorder: 'Drag to Reorder',
+        moreActions: 'More Actions',
+        disabled: 'Off'
     },
     modal: {
         addEndpoint: 'Add Endpoint',

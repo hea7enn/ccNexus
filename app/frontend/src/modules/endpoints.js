@@ -5,6 +5,7 @@ import { toggleEndpoint } from './config.js';
 
 const ENDPOINT_TEST_STATUS_KEY = 'ccNexus_endpointTestStatus';
 const CURRENT_ENDPOINT_KEY = 'ccNexus_currentEndpoint';
+const ENDPOINT_VIEW_MODE_KEY = 'ccNexus_endpointViewMode';
 
 // 获取端点测试状态
 export function getEndpointTestStatus(endpointName) {
@@ -43,6 +44,55 @@ export function saveCurrentEndpoint(endpointName) {
     } catch (error) {
         console.error('Failed to save current endpoint:', error);
     }
+}
+
+// 获取端点视图模式
+export function getEndpointViewMode() {
+    try {
+        return localStorage.getItem(ENDPOINT_VIEW_MODE_KEY) || 'detail';
+    } catch {
+        return 'detail';
+    }
+}
+
+// 保存端点视图模式
+export function saveEndpointViewMode(mode) {
+    try {
+        localStorage.setItem(ENDPOINT_VIEW_MODE_KEY, mode);
+    } catch (error) {
+        console.error('Failed to save endpoint view mode:', error);
+    }
+}
+
+// 切换视图模式
+export function switchEndpointViewMode(mode) {
+    saveEndpointViewMode(mode);
+
+    // 更新按钮状态
+    const buttons = document.querySelectorAll('.view-mode-btn');
+    buttons.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === mode);
+    });
+
+    // 更新列表样式
+    const container = document.getElementById('endpointList');
+    if (mode === 'compact') {
+        container.classList.add('compact-view');
+    } else {
+        container.classList.remove('compact-view');
+    }
+
+    // 重新渲染端点列表
+    window.loadConfig();
+}
+
+// 初始化视图模式
+export function initEndpointViewMode() {
+    const mode = getEndpointViewMode();
+    const buttons = document.querySelectorAll('.view-mode-btn');
+    buttons.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === mode);
+    });
 }
 
 let currentTestButton = null;
@@ -134,6 +184,16 @@ export async function renderEndpoints(endpoints) {
         const enabled = ep.enabled !== undefined ? ep.enabled : true;
         return { endpoint: ep, originalIndex: index, stats, enabled };
     });
+
+    // 检查视图模式
+    const viewMode = getEndpointViewMode();
+    if (viewMode === 'compact') {
+        container.classList.add('compact-view');
+        renderCompactView(sortedEndpoints, container, currentEndpointName);
+        return;
+    } else {
+        container.classList.remove('compact-view');
+    }
 
     sortedEndpoints.forEach(({ endpoint: ep, originalIndex: index, stats }) => {
         const totalTokens = stats.inputTokens + stats.outputTokens;
@@ -385,6 +445,247 @@ function setupDragAndDrop(item, container) {
             }
 
             // Save to backend
+            try {
+                await window.go.main.App.ReorderEndpoints(newOrder);
+                window.loadConfig();
+            } catch (error) {
+                console.error('Failed to reorder endpoints:', error);
+                alert(t('endpoints.reorderFailed') + ': ' + error);
+                window.loadConfig();
+            }
+        }
+
+        item.classList.remove('drag-over');
+    });
+}
+
+// 渲染简洁视图
+function renderCompactView(sortedEndpoints, container, currentEndpointName) {
+    sortedEndpoints.forEach(({ endpoint: ep, originalIndex: index, stats }) => {
+        const enabled = ep.enabled !== undefined ? ep.enabled : true;
+        const transformer = ep.transformer || 'claude';
+        const isCurrentEndpoint = ep.name === currentEndpointName;
+
+        // 获取测试状态
+        const testStatus = getEndpointTestStatus(ep.name);
+        let testStatusIcon = '⚠️';
+        if (testStatus === true) {
+            testStatusIcon = '✅';
+        } else if (testStatus === false) {
+            testStatusIcon = '❌';
+        }
+
+        const item = document.createElement('div');
+        item.className = 'endpoint-item-compact';
+        item.draggable = true;
+        item.dataset.name = ep.name;
+        item.dataset.index = index;
+
+        // 截断 URL 显示
+        const displayUrl = ep.apiUrl.length > 40 ? ep.apiUrl.substring(0, 40) + '...' : ep.apiUrl;
+
+        item.innerHTML = `
+            <div class="drag-handle" title="${t('endpoints.dragToReorder')}">
+                <div class="drag-handle-dots"><span></span><span></span></div>
+                <div class="drag-handle-dots"><span></span><span></span></div>
+                <div class="drag-handle-dots"><span></span><span></span></div>
+            </div>
+            <span class="compact-status">${testStatusIcon}</span>
+            <span class="compact-name" title="${ep.name}">${ep.name}</span>
+            ${isCurrentEndpoint ? '<span class="btn btn-primary compact-badge-btn">' + t('endpoints.current') + '</span>' : (enabled ? '<button class="btn btn-primary compact-badge-btn" data-action="switch" data-name="' + ep.name + '">' + t('endpoints.switchTo') + '</button>' : '<span class="btn btn-primary compact-badge-btn compact-badge-disabled">' + t('endpoints.disabled') + '</span>')}
+            <span class="compact-url" title="${ep.apiUrl}"><span class="compact-url-icon">🌐</span>${displayUrl}</span>
+            <span class="compact-transformer">🔄 ${transformer}</span>
+            <span class="compact-stats">📊 ${stats.requests} | 🎯 ${formatTokens(stats.inputTokens + stats.outputTokens)}</span>
+            <div class="compact-actions">
+                <label class="toggle-switch">
+                    <input type="checkbox" data-index="${index}" ${enabled ? 'checked' : ''}>
+                    <span class="toggle-slider"></span>
+                </label>
+                <div class="compact-more-dropdown">
+                    <button class="compact-btn" data-action="more" title="${t('endpoints.moreActions')}">⋯</button>
+                    <div class="compact-more-menu">
+                        <button data-action="test" data-index="${index}">🧪 ${t('endpoints.test')}</button>
+                        <button data-action="edit" data-index="${index}">✏️ ${t('endpoints.edit')}</button>
+                        <button data-action="delete" data-index="${index}" class="danger">🗑️ ${t('endpoints.delete')}</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // 绑定事件
+        bindCompactItemEvents(item, index, enabled);
+
+        // 设置拖拽
+        setupCompactDragAndDrop(item, container);
+
+        container.appendChild(item);
+    });
+
+    // 点击其他地方关闭下拉菜单
+    document.addEventListener('click', closeAllDropdowns);
+}
+
+// 绑定简洁视图项目事件
+function bindCompactItemEvents(item, index, enabled) {
+    const toggleSwitch = item.querySelector('input[type="checkbox"]');
+    const switchBtn = item.querySelector('[data-action="switch"]');
+    const moreBtn = item.querySelector('[data-action="more"]');
+    const moreMenu = item.querySelector('.compact-more-menu');
+    const testBtn = item.querySelector('[data-action="test"]');
+    const editBtn = item.querySelector('[data-action="edit"]');
+    const deleteBtn = item.querySelector('[data-action="delete"]');
+
+    // 启用/禁用开关
+    toggleSwitch.addEventListener('change', async (e) => {
+        const idx = parseInt(e.target.getAttribute('data-index'));
+        const newEnabled = e.target.checked;
+        try {
+            await toggleEndpoint(idx, newEnabled);
+            window.loadConfig();
+        } catch (error) {
+            console.error('Failed to toggle endpoint:', error);
+            alert('Failed to toggle endpoint: ' + error);
+            e.target.checked = !newEnabled;
+        }
+    });
+
+    // 切换按钮
+    if (switchBtn) {
+        switchBtn.addEventListener('click', async () => {
+            const name = switchBtn.getAttribute('data-name');
+            try {
+                switchBtn.disabled = true;
+                switchBtn.innerHTML = '⏳';
+                await window.go.main.App.SwitchToEndpoint(name);
+                saveCurrentEndpoint(name);
+                window.loadConfig();
+            } catch (error) {
+                console.error('Failed to switch endpoint:', error);
+                alert(t('endpoints.switchFailed') + ': ' + error);
+            } finally {
+                if (switchBtn) {
+                    switchBtn.disabled = false;
+                    switchBtn.innerHTML = t('endpoints.switchTo');
+                }
+            }
+        });
+    }
+
+    // 更多操作按钮
+    moreBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeAllDropdowns();
+        moreMenu.classList.toggle('show');
+    });
+
+    // 测试按钮
+    testBtn.addEventListener('click', () => {
+        closeAllDropdowns();
+        const idx = parseInt(testBtn.getAttribute('data-index'));
+        window.testEndpoint(idx, testBtn);
+    });
+
+    // 编辑按钮
+    editBtn.addEventListener('click', () => {
+        closeAllDropdowns();
+        const idx = parseInt(editBtn.getAttribute('data-index'));
+        window.editEndpoint(idx);
+    });
+
+    // 删除按钮
+    deleteBtn.addEventListener('click', () => {
+        closeAllDropdowns();
+        const idx = parseInt(deleteBtn.getAttribute('data-index'));
+        window.deleteEndpoint(idx);
+    });
+}
+
+// 关闭所有下拉菜单
+function closeAllDropdowns() {
+    document.querySelectorAll('.compact-more-menu.show').forEach(menu => {
+        menu.classList.remove('show');
+    });
+}
+
+// 简洁视图的拖拽设置
+function setupCompactDragAndDrop(item, container) {
+    item.addEventListener('dragstart', (e) => {
+        draggedElement = item;
+        draggedOriginalName = item.dataset.name;
+        item.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/html', item.innerHTML);
+
+        autoScrollInterval = setInterval(() => {
+            if (window.lastDragEvent) {
+                autoScroll(window.lastDragEvent);
+            }
+        }, 50);
+    });
+
+    item.addEventListener('dragend', () => {
+        item.classList.remove('dragging');
+        const allItems = container.querySelectorAll('.endpoint-item-compact');
+        allItems.forEach(i => i.classList.remove('drag-over'));
+        draggedElement = null;
+        draggedOverElement = null;
+        draggedOriginalName = null;
+
+        if (autoScrollInterval) {
+            clearInterval(autoScrollInterval);
+            autoScrollInterval = null;
+        }
+        window.lastDragEvent = null;
+    });
+
+    item.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        window.lastDragEvent = e;
+
+        if (draggedElement && draggedElement !== item) {
+            if (draggedOverElement && draggedOverElement !== item) {
+                draggedOverElement.classList.remove('drag-over');
+            }
+            item.classList.add('drag-over');
+            draggedOverElement = item;
+        }
+    });
+
+    item.addEventListener('dragleave', (e) => {
+        if (!item.contains(e.relatedTarget)) {
+            item.classList.remove('drag-over');
+            if (draggedOverElement === item) {
+                draggedOverElement = null;
+            }
+        }
+    });
+
+    item.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (draggedElement && draggedElement !== item) {
+            const draggedName = draggedElement.dataset.name;
+            const targetName = item.dataset.name;
+
+            const allItems = Array.from(container.querySelectorAll('.endpoint-item-compact'));
+            const currentOrder = allItems.map(el => el.dataset.name);
+
+            const fromIndex = currentOrder.indexOf(draggedName);
+            const toIndex = currentOrder.indexOf(targetName);
+
+            const newOrder = [...currentOrder];
+            newOrder.splice(fromIndex, 1);
+            newOrder.splice(toIndex, 0, draggedName);
+
+            const orderChanged = !currentOrder.every((name, idx) => name === newOrder[idx]);
+
+            if (!orderChanged) {
+                item.classList.remove('drag-over');
+                return;
+            }
+
             try {
                 await window.go.main.App.ReorderEndpoints(newOrder);
                 window.loadConfig();
